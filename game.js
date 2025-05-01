@@ -41,7 +41,7 @@ const MAX_JUMP_FORCE = -10; // Maximum jump force (fully charged)
 const JUMP_CHARGE_RATE = 0.01; // How quickly jump force increases while holding
 const OBSTACLE_SPEED = 5;
 const BACKGROUND_SPEED = 2;
-const POWERUP_CHANCE = 0.4; // Chance per frame to spawn a power-up
+const POWERUP_CHANCE = 0.2; // Chance per frame to spawn a power-up
 const POWERUP_DURATION = 3000; // 3 seconds
 const MIN_OBSTACLE_SIZE = 40;
 const MAX_OBSTACLE_SIZE = 100;
@@ -139,14 +139,17 @@ let invincibilityFlash = false;
 let flashTimer = 0;
 let powerUpDuration = 0;
 let assetsLoaded = 0;
-let totalAssets = 2; // Background and stroller images - obstacle images load separately
+let totalAssets = 3; // Background, stroller images, and background music
+let backgroundMusic = new Audio();
+let isMusicPlaying = false;
 
 // Asset loading management
 function checkAllAssetsLoaded() {
     assetsLoaded++;
     if (assetsLoaded >= totalAssets) {
-        gameStarted = true;
-        animate();
+        // Assets are loaded but we won't start the game automatically
+        // Instead, we'll wait for the splash screen click
+        document.getElementById('splash-screen').style.cursor = 'pointer';
     }
 }
 
@@ -210,6 +213,42 @@ strollerImage.onerror = function() {
 // Set background and stroller images or use fallbacks
 backgroundImage.src = 'background.jpg';
 strollerImage.src = 'stroller.png';
+
+// Load background music
+backgroundMusic.src = 'baby_song.mp3';
+backgroundMusic.loop = true;
+backgroundMusic.volume = 0.7;
+
+// Handle background music loading
+backgroundMusic.oncanplaythrough = function() {
+    checkAllAssetsLoaded();
+};
+
+backgroundMusic.onerror = function() {
+    console.log("Failed to load background music");
+    checkAllAssetsLoaded(); // Continue even if music fails to load
+};
+
+// Function to play background music
+function playBackgroundMusic() {
+    if (!isMusicPlaying) {
+        backgroundMusic.play()
+            .then(() => {
+                isMusicPlaying = true;
+            })
+            .catch(err => {
+                console.log("Error playing background music:", err);
+            });
+    }
+}
+
+// Function to pause background music
+function pauseBackgroundMusic() {
+    if (isMusicPlaying) {
+        backgroundMusic.pause();
+        isMusicPlaying = false;
+    }
+}
 
 // Stroller object
 const stroller = {
@@ -534,7 +573,7 @@ function update() {
     
     // Update invincibility
     if (isInvincible) {
-        powerUpDuration -= 16; // Approx 16ms per frame
+        powerUpDuration -= 32; // Approx 16ms per frame
         
         // Update countdown display
         const secondsLeft = Math.ceil(powerUpDuration / 1000);
@@ -655,6 +694,7 @@ function endGame() {
     gameOver = true;
     finalScoreElement.textContent = Math.floor(score);
     gameOverElement.style.display = 'block';
+    pauseBackgroundMusic();
 }
 
 // Restart game
@@ -666,6 +706,7 @@ function restartGame() {
     powerUps.length = 0;
     lastObstacleTime = Date.now();
     disableInvincibility();
+    playBackgroundMusic();
     
     // Reset stroller
     stroller.y = GAME_HEIGHT - stroller.originalHeight;
@@ -711,8 +752,21 @@ document.addEventListener('keyup', function(e) {
 
 restartButton.addEventListener('click', restartGame);
 
-// Start the game when everything is loaded
+// Start the game when splash screen is clicked
+document.getElementById('splash-screen').addEventListener('click', function() {
+    // Hide splash screen
+    document.getElementById('splash-screen').style.display = 'none';
+    
+    // Start the game
+    gameStarted = true;
+    animate();
+    playBackgroundMusic();
+    
+    // Reset game time/obstacles
+    lastObstacleTime = Date.now();
+});
+
+// Start loading everything when page loads
 window.addEventListener('load', function() {
-    // The game will start once the background image is loaded
-    // or the fallback pattern is created
+    // The assets will load but game won't start until splash screen is clicked
 });
