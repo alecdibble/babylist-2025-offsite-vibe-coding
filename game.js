@@ -762,18 +762,30 @@ document.addEventListener('keyup', function(e) {
 
 restartButton.addEventListener('click', restartGame);
 
+// Function to start the game
+function startGame() {
+    if (!gameStarted) {
+        // Hide splash screen
+        document.getElementById('splash-screen').style.display = 'none';
+        
+        // Start the game
+        gameStarted = true;
+        animate();
+        playBackgroundMusic();
+        
+        // Reset game time/obstacles
+        lastObstacleTime = Date.now();
+    }
+}
+
 // Start the game when splash screen is clicked
-document.getElementById('splash-screen').addEventListener('click', function() {
-    // Hide splash screen
-    document.getElementById('splash-screen').style.display = 'none';
-    
-    // Start the game
-    gameStarted = true;
-    animate();
-    playBackgroundMusic();
-    
-    // Reset game time/obstacles
-    lastObstacleTime = Date.now();
+document.getElementById('splash-screen').addEventListener('click', startGame);
+
+// Start the game when any key is pressed
+document.addEventListener('keydown', function(e) {
+    if (!gameStarted) {
+        startGame();
+    }
 });
 
 // Start loading everything when page loads
