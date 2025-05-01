@@ -42,7 +42,7 @@ const JUMP_CHARGE_RATE = 0.01; // How quickly jump force increases while holding
 const OBSTACLE_SPEED = 5;
 const BACKGROUND_SPEED = 2;
 const POWERUP_CHANCE = 0.2; // Chance per frame to spawn a power-up
-const POWERUP_DURATION = 3000; // 3 seconds
+const INVINCIBILITY_DURATION_SECONDS = 7; // Duration of invincibility in seconds
 const MIN_OBSTACLE_SIZE = 40;
 const MAX_OBSTACLE_SIZE = 100;
 const MIN_OBSTACLE_GAP = 1000; // Minimum gap between obstacles
@@ -603,9 +603,9 @@ function collectPowerUp(powerUp) {
 // Enable invincibility
 function enableInvincibility() {
     isInvincible = true;
-    powerUpDuration = POWERUP_DURATION;
+    powerUpDuration = INVINCIBILITY_DURATION_SECONDS * 1000; // Convert seconds to milliseconds
     powerUpIndicator.style.display = 'block';
-    countdownElement.textContent = Math.ceil(powerUpDuration / 1000);
+    countdownElement.textContent = INVINCIBILITY_DURATION_SECONDS;
 }
 
 // Disable invincibility
