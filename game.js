@@ -19,7 +19,7 @@
  * - Game over screen with restart option
  * 
  * Control Scheme:
- * - Up Arrow / Spacebar: Jump
+ * - Up Arrow / Spacebar: Hold to charge jump, release to jump (longer hold = higher jump)
  * - Down Arrow: Crouch (compress stroller by 50% height)
  * 
  * Code Structure:
@@ -36,14 +36,21 @@
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 const GRAVITY = 0.25;
-const JUMP_FORCE = -12;
+const MIN_JUMP_FORCE = -7;  // Minimum jump force (quick tap)
+const MAX_JUMP_FORCE = -10; // Maximum jump force (fully charged)
+const JUMP_CHARGE_RATE = 0.01; // How quickly jump force increases while holding
 const OBSTACLE_SPEED = 5;
 const BACKGROUND_SPEED = 2;
-const POWERUP_CHANCE = 0.005; // Chance per frame to spawn a power-up
+const POWERUP_CHANCE = 0.4; // Chance per frame to spawn a power-up
 const POWERUP_DURATION = 3000; // 3 seconds
 const MIN_OBSTACLE_SIZE = 40;
 const MAX_OBSTACLE_SIZE = 100;
 const MIN_OBSTACLE_GAP = 1000; // Minimum gap between obstacles
+
+// Stroller configuration
+const STROLLER_WIDTH = 100;
+const STROLLER_HEIGHT = 100;
+const STROLLER_CROUCH_HEIGHT_RATIO = 0.5; // 50% of original height when crouching
 
 // Obstacle images object - maps obstacle names to image URLs
 // This allows for future customization of behavior based on obstacle type
@@ -189,13 +196,13 @@ strollerImage.onerror = function() {
     // Create a fallback square stroller if image fails to load
     console.log("Failed to load stroller image, using fallback");
     const strollerCanvas = document.createElement('canvas');
-    strollerCanvas.width = 60;
-    strollerCanvas.height = 60;
+    strollerCanvas.width = STROLLER_WIDTH;
+    strollerCanvas.height = STROLLER_HEIGHT;
     const strollerCtx = strollerCanvas.getContext('2d');
     
     // Draw a simple stroller shape
     strollerCtx.fillStyle = '#FF6347';
-    strollerCtx.fillRect(0, 0, 60, 60);
+    strollerCtx.fillRect(0, 0, STROLLER_WIDTH, STROLLER_HEIGHT);
     
     strollerImage.src = strollerCanvas.toDataURL();
 };
@@ -207,14 +214,17 @@ strollerImage.src = 'stroller.png';
 // Stroller object
 const stroller = {
     x: 100,
-    y: GAME_HEIGHT - 60,
-    width: 60,
-    height: 60,
+    y: GAME_HEIGHT - STROLLER_HEIGHT,
+    width: STROLLER_WIDTH,
+    height: STROLLER_HEIGHT,
     speed: 0,
     jumping: false,
     crouching: false,
-    originalHeight: 60,
-    crouchHeight: 30, // 50% of original height
+    originalHeight: STROLLER_HEIGHT,
+    crouchHeight: STROLLER_HEIGHT * STROLLER_CROUCH_HEIGHT_RATIO,
+    jumpCharging: false,
+    jumpChargeTime: 0,
+    jumpForce: MIN_JUMP_FORCE,
     
     update: function() {
         // Apply gravity
@@ -230,10 +240,46 @@ const stroller = {
         }
     },
     
+    startJumpCharge: function() {
+        if (!this.jumping && !this.crouching) {
+            // Immediately jump
+            this.jumping = true;
+            this.speed = MIN_JUMP_FORCE;
+            
+            // Start charging for additional height
+            this.jumpCharging = true;
+            this.jumpChargeTime = 0;
+        }
+    },
+    
+    executeJump: function() {
+        // Stop charging when key is released
+        this.jumpCharging = false;
+    },
+    
+    updateJumpCharge: function() {
+        if (this.jumpCharging && this.jumping) {
+            this.jumpChargeTime++;
+            
+            // Only apply additional force if the stroller is still moving upward
+            if (this.speed < 0) {
+                // Calculate additional boost based on charge time
+                const additionalForce = Math.min(this.jumpChargeTime * JUMP_CHARGE_RATE, Math.abs(MAX_JUMP_FORCE - MIN_JUMP_FORCE));
+                
+                // Continuously boost the upward speed while charging
+                this.speed = Math.max(MIN_JUMP_FORCE - additionalForce, MAX_JUMP_FORCE);
+            } else {
+                // If we're no longer moving upward, stop charging
+                this.jumpCharging = false;
+            }
+        }
+    },
+    
     jump: function() {
+        // Legacy method for backward compatibility
         if (!this.jumping && !this.crouching) {
             this.jumping = true;
-            this.speed = JUMP_FORCE;
+            this.speed = MIN_JUMP_FORCE;
         }
     },
     
@@ -278,7 +324,40 @@ const stroller = {
             );
         }
         
+        // Draw jump charge indicator if charging
+        if (this.jumpCharging) {
+            this.drawJumpChargeIndicator();
+        }
+        
         ctx.restore();
+    },
+    
+    drawJumpChargeIndicator: function() {
+        // Calculate charge percentage (0 to 1) based on charge time
+        const maxChargeTime = Math.abs(MAX_JUMP_FORCE - MIN_JUMP_FORCE) / JUMP_CHARGE_RATE;
+        const chargePercent = Math.min(1, this.jumpChargeTime / maxChargeTime);
+        
+        const barWidth = this.width;
+        const barHeight = 5;
+        const barX = this.x;
+        const barY = this.y - 15; // Position above the stroller
+        
+        // Draw background bar
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Draw charge progress
+        // Color changes from yellow to red as charge increases
+        const r = Math.floor(255);
+        const g = Math.floor(255 * (1 - chargePercent * 0.8));
+        const b = 0;
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fillRect(barX, barY, barWidth * chargePercent, barHeight);
+        
+        // Draw border
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
     },
     
     getHitbox: function() {
@@ -308,7 +387,8 @@ function createObstacle() {
         y = GAME_HEIGHT - size;
     } else {
         // Air obstacle, positioned where the stroller would be when jumping
-        y = GAME_HEIGHT - size - 140 + Math.random() * 50;
+        // Position between 2-3x the stroller height to ensure they're jumpable
+        y = GAME_HEIGHT - size - (STROLLER_HEIGHT * (2 + Math.random()));
     }
     
     // Select a random obstacle type from the OBSTACLE_IMAGES object
@@ -404,6 +484,9 @@ function update() {
     
     // Update stroller
     stroller.update();
+    
+    // Update jump charge if in charging state
+    stroller.updateJumpCharge();
     
     // Generate obstacles
     const currentTime = Date.now();
@@ -590,6 +673,9 @@ function restartGame() {
     stroller.speed = 0;
     stroller.jumping = false;
     stroller.crouching = false;
+    stroller.jumpCharging = false;
+    stroller.jumpChargeTime = 0;
+    stroller.jumpForce = MIN_JUMP_FORCE;
     
     // Hide game over screen
     gameOverElement.style.display = 'none';
@@ -605,7 +691,7 @@ document.addEventListener('keydown', function(e) {
     switch(e.key) {
         case 'ArrowUp':
         case ' ':  // Spacebar
-            stroller.jump();
+            stroller.startJumpCharge();
             break;
         case 'ArrowDown':
             stroller.crouch();
@@ -618,6 +704,8 @@ document.addEventListener('keyup', function(e) {
     
     if (e.key === 'ArrowDown') {
         stroller.standUp();
+    } else if (e.key === 'ArrowUp' || e.key === ' ') {
+        stroller.executeJump();
     }
 });
 
