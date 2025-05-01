@@ -1,7 +1,41 @@
+/**
+ * Stroller Dash - Side-scrolling Obstacle Avoidance Game
+ * ======================================================
+ * 
+ * Game Overview:
+ * This game features a stroller that continuously moves forward (side-scrolling).
+ * The player can make the stroller jump (up arrow) or crouch (down arrow) to avoid
+ * randomly generated square obstacles of varying sizes. The goal is to survive as
+ * long as possible, with the score increasing based on survival time.
+ * 
+ * Key Features:
+ * - Side-scrolling gameplay with continuously moving background
+ * - Stroller character that can jump and crouch
+ * - Randomly generated square obstacles of varying sizes (20x20 to 100x100 pixels)
+ * - Background image support with bottom-anchoring (tall images show bottom portion)
+ * - Precise edge-based collision detection
+ * - Invincibility power-ups that appear randomly
+ * - Survival time-based scoring system
+ * - Game over screen with restart option
+ * 
+ * Control Scheme:
+ * - Up Arrow / Spacebar: Jump
+ * - Down Arrow: Crouch (compress stroller by 50% height)
+ * 
+ * Code Structure:
+ * - Asset loading: Background and stroller images with fallback generation
+ * - Game objects: Stroller, obstacles, power-ups with their own properties and methods
+ * - Game loop: Animation, update and render cycles
+ * - Event handling: Keyboard controls and collision detection
+ * - UI management: Score display, power-up indicators, game over screen
+ * 
+ * Created as part of the Babylist 2025 project
+ */
+
 // Game constants
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
-const GRAVITY = 0.5;
+const GRAVITY = 0.25;
 const JUMP_FORCE = -12;
 const OBSTACLE_SPEED = 5;
 const BACKGROUND_SPEED = 2;
@@ -10,6 +44,14 @@ const POWERUP_DURATION = 3000; // 3 seconds
 const MIN_OBSTACLE_SIZE = 20;
 const MAX_OBSTACLE_SIZE = 100;
 const MIN_OBSTACLE_GAP = 300; // Minimum gap between obstacles
+
+// Obstacle images object - maps obstacle names to image URLs
+// This allows for future customization of behavior based on obstacle type
+const OBSTACLE_IMAGES = {
+    "shaker": "obstacles/shake.png",
+    "bottle": "obstacles/bottle.png",
+    "bear": "obstacles/bear.png",
+};
 
 // Get canvas and context
 const canvas = document.getElementById('gameCanvas');
@@ -23,6 +65,54 @@ const restartButton = document.getElementById('restart-btn');
 const powerUpIndicator = document.getElementById('power-up-indicator');
 const countdownElement = document.getElementById('countdown');
 
+// Preload obstacle images and handle loading errors
+const obstacleImagesCache = {};
+let obstacleImagesLoaded = 0;
+const totalObstacleImages = Object.keys(OBSTACLE_IMAGES).length;
+
+Object.entries(OBSTACLE_IMAGES).forEach(([name, url]) => {
+    const img = new Image();
+    
+    img.onload = function() {
+        obstacleImagesLoaded++;
+        obstacleImagesCache[name] = img;
+    };
+    
+    img.onerror = function() {
+        console.log(`Failed to load image for ${name}, using fallback`);
+        // Create a fallback colored square
+        const fallbackCanvas = document.createElement('canvas');
+        fallbackCanvas.width = 64;
+        fallbackCanvas.height = 64;
+        const fallbackCtx = fallbackCanvas.getContext('2d');
+        
+        // Use different colors for different obstacle types
+        let color;
+        switch(name) {
+            case 'rock': color = '#8B4513'; break; // Brown
+            case 'box': color = '#D2691E'; break; // Chocolate
+            case 'crate': color = '#CD853F'; break; // Peru
+            case 'barrier': color = '#A52A2A'; break; // Brown
+            case 'cone': color = '#FF8C00'; break; // Dark Orange
+            default: color = '#4682B4'; break; // Steel Blue
+        }
+        
+        fallbackCtx.fillStyle = color;
+        fallbackCtx.fillRect(0, 0, 64, 64);
+        
+        // Add some texture/detail
+        fallbackCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+        fallbackCtx.lineWidth = 2;
+        fallbackCtx.strokeRect(5, 5, 54, 54);
+        
+        img.src = fallbackCanvas.toDataURL();
+        obstacleImagesCache[name] = img;
+        obstacleImagesLoaded++;
+    };
+    
+    img.src = url;
+});
+
 // Game variables
 let gameStarted = false;
 let gameOver = false;
@@ -30,16 +120,27 @@ let score = 0;
 let lastObstacleTime = 0;
 let backgroundX = 0;
 let backgroundImage = new Image();
+let strollerImage = new Image();
 let isInvincible = false;
 let invincibilityTimer = 0;
 let invincibilityFlash = false;
 let flashTimer = 0;
 let powerUpDuration = 0;
+let assetsLoaded = 0;
+let totalAssets = 2; // Background and stroller images - obstacle images load separately
 
-// Create background pattern if no image is provided
+// Asset loading management
+function checkAllAssetsLoaded() {
+    assetsLoaded++;
+    if (assetsLoaded >= totalAssets) {
+        gameStarted = true;
+        animate();
+    }
+}
+
+// Load background image
 backgroundImage.onload = function() {
-    gameStarted = true;
-    animate();
+    checkAllAssetsLoaded();
 };
 backgroundImage.onerror = function() {
     // Create a fallback pattern
@@ -74,21 +175,41 @@ backgroundImage.onerror = function() {
     backgroundImage.src = patternCanvas.toDataURL();
 };
 
-// Set background image or use fallback
-// Trigger the fallback mechanism immediately since we don't have a background.jpg
-backgroundImage.src = 'background.jpg';  // This will trigger the onerror handler
+// Load stroller image
+strollerImage.onload = function() {
+    checkAllAssetsLoaded();
+};
+
+strollerImage.onerror = function() {
+    // Create a fallback square stroller if image fails to load
+    console.log("Failed to load stroller image, using fallback");
+    const strollerCanvas = document.createElement('canvas');
+    strollerCanvas.width = 60;
+    strollerCanvas.height = 60;
+    const strollerCtx = strollerCanvas.getContext('2d');
+    
+    // Draw a simple stroller shape
+    strollerCtx.fillStyle = '#FF6347';
+    strollerCtx.fillRect(0, 0, 60, 60);
+    
+    strollerImage.src = strollerCanvas.toDataURL();
+};
+
+// Set background and stroller images or use fallbacks
+backgroundImage.src = 'background.jpg';
+strollerImage.src = 'stroller.png';
 
 // Stroller object
 const stroller = {
     x: 100,
-    y: GAME_HEIGHT - 100,
-    width: 50,
-    height: 80,
+    y: GAME_HEIGHT - 60,
+    width: 60,
+    height: 60,
     speed: 0,
     jumping: false,
     crouching: false,
-    originalHeight: 80,
-    crouchHeight: 40,
+    originalHeight: 60,
+    crouchHeight: 30, // 50% of original height
     
     update: function() {
         // Apply gravity
@@ -135,19 +256,21 @@ const stroller = {
             ctx.globalAlpha = 0.7;
         }
         
-        // Draw the stroller (placeholder graphics)
-        ctx.fillStyle = '#FF6347';
-        
-        // Base/wheels
-        ctx.fillRect(this.x, this.y + this.height - 15, this.width, 15);
-        
-        // Body
-        const bodyHeight = this.crouching ? 25 : 65;
-        ctx.fillRect(this.x + 5, this.y + this.height - 15 - bodyHeight, this.width - 10, bodyHeight);
-        
-        // Handle
-        if (!this.crouching) {
-            ctx.fillRect(this.x + this.width - 10, this.y + 10, 5, this.height - 20);
+        // Draw the stroller using the image
+        if (this.crouching) {
+            // When crouching, draw the image compressed vertically (50% height)
+            ctx.drawImage(
+                strollerImage,
+                0, 0, strollerImage.width, strollerImage.height, // Source rectangle
+                this.x, this.y, this.width, this.height          // Destination rectangle (compressed height)
+            );
+        } else {
+            // Normal state, draw at full dimensions
+            ctx.drawImage(
+                strollerImage,
+                0, 0, strollerImage.width, strollerImage.height, // Source rectangle
+                this.x, this.y, this.width, this.height          // Destination rectangle
+            );
         }
         
         ctx.restore();
@@ -183,12 +306,17 @@ function createObstacle() {
         y = GAME_HEIGHT - size - 140 + Math.random() * 50;
     }
     
+    // Select a random obstacle type from the OBSTACLE_IMAGES object
+    const obstacleTypes = Object.keys(OBSTACLE_IMAGES);
+    const randomType = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+    
     obstacles.push({
         x: GAME_WIDTH,
         y: y,
         width: size,
         height: size,
-        passed: false
+        passed: false,
+        type: randomType // Store the obstacle type
     });
 }
 
@@ -370,8 +498,26 @@ function render() {
     
     // Draw obstacles
     obstacles.forEach(obstacle => {
-        ctx.fillStyle = '#4682B4'; // SteelBlue color
-        ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        // Make sure the type exists and the corresponding image is loaded
+        if (obstacle.type && obstacleImagesCache[obstacle.type]) {
+            try {
+                // Draw the obstacle using its image
+                ctx.drawImage(
+                    obstacleImagesCache[obstacle.type],
+                    0, 0, obstacleImagesCache[obstacle.type].width, obstacleImagesCache[obstacle.type].height, // Source rectangle
+                    obstacle.x, obstacle.y, obstacle.width, obstacle.height // Destination rectangle
+                );
+            } catch (e) {
+                // In case of any rendering errors, fall back to rectangle
+                console.log("Error rendering obstacle image, using fallback:", e);
+                ctx.fillStyle = '#4682B4'; // SteelBlue color
+                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            }
+        } else {
+            // Fallback to rectangle if image not available
+            ctx.fillStyle = '#4682B4'; // SteelBlue color
+            ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        }
     });
     
     // Draw power-ups
