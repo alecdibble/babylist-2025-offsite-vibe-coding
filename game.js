@@ -41,16 +41,21 @@ const OBSTACLE_SPEED = 5;
 const BACKGROUND_SPEED = 2;
 const POWERUP_CHANCE = 0.005; // Chance per frame to spawn a power-up
 const POWERUP_DURATION = 3000; // 3 seconds
-const MIN_OBSTACLE_SIZE = 20;
+const MIN_OBSTACLE_SIZE = 40;
 const MAX_OBSTACLE_SIZE = 100;
-const MIN_OBSTACLE_GAP = 300; // Minimum gap between obstacles
+const MIN_OBSTACLE_GAP = 1000; // Minimum gap between obstacles
 
 // Obstacle images object - maps obstacle names to image URLs
 // This allows for future customization of behavior based on obstacle type
 const OBSTACLE_IMAGES = {
-    "shaker": "obstacles/shake.png",
-    "bottle": "obstacles/bottle.png",
     "bear": "obstacles/bear.png",
+    "bottle": "obstacles/bottle.png",
+    "shaker": "obstacles/shaker.png",
+    "ball": "obstacles/ball.png",
+    "blocks": "obstacles/blocks.png",
+    "binky": "obstacles/binky.png",
+    "ducky": "obstacles/ducky.png",
+    "car": "obstacles/car.png",
 };
 
 // Get canvas and context
