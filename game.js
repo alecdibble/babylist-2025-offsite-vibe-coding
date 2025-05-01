@@ -142,6 +142,7 @@ let assetsLoaded = 0;
 let totalAssets = 3; // Background, stroller images, and background music
 let backgroundMusic = new Audio();
 let isMusicPlaying = false;
+let babyCryingSound = new Audio('baby_crying.mp3');
 
 // Asset loading management
 function checkAllAssetsLoaded() {
@@ -695,10 +696,19 @@ function endGame() {
     finalScoreElement.textContent = Math.floor(score);
     gameOverElement.style.display = 'block';
     pauseBackgroundMusic();
+    
+    // Play baby crying sound when game ends
+    babyCryingSound.play().catch(err => {
+        console.log("Error playing baby crying sound:", err);
+    });
 }
 
 // Restart game
 function restartGame() {
+    // Stop baby crying sound when restarting
+    babyCryingSound.pause();
+    babyCryingSound.currentTime = 0;
+    
     // Reset game variables
     score = 0;
     gameOver = false;
